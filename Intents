@@ -1,0 +1,16 @@
+{
+  "intents": [
+    {
+  "intents": "GetTrailsWithin50MilesfromSSU"
+    },
+    {
+      "intents": "GetTrailDifficulty",
+      "slots" : [
+          {
+           	"name" : "TrailName", 
+            "type" : "AMAZON.NUMBER"
+          }
+        ]
+    }
+  ]
+}
