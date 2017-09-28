@@ -50,11 +50,37 @@ const handlers = {
         );
     },
     'TrailSurf': function() {
-        // Emit welcome message to test intent/utterances
+        
+        // Set default variables to be changed if slots are
+        // specified
+        var location = "Sonoma State University";
+        
+        // Get current intent object
+        var intentObj = this.event.request.intent;
+        var slots = intentObj.slots;
+        
+        // Check to see if the slot has been defined yet
+        // slots.location is the slot for location
+        // .hasOwnProperty is a JSON object method
+        // to check if the given parameter exists as a key
+        // in the object the method is called on
+        if (slots.location.hasOwnProperty('value')) {
+            location = slots.location.value;
+        }
+        
+        //var length = slots.length.value;
+        //var difficulty = slots.difficulty.value;
+        
+        console.log(slots);
+        console.log("Location: " + location);
+        
+        /* TODO: database querying here */
+        
+        // Emit response to user
         this.emit(
-            ':tell', 
-            this.t('WELCOME_MESSAGE',
-            this.t('SKILL_NAME'))
+            ':ask', 
+            'I found 1 hike in ' + location
+            + 'Look for more?'
         );
     },
     'AMAZON.HelpIntent': function () {
@@ -98,10 +124,9 @@ const handlers = {
 
 exports.handler = function (event, context) {
     const alexa = Alexa.handler(event, context);
-    alexa.APP_ID = APP_ID;
+    alexa.appId = APP_ID;
     // To enable string internationalization (i18n) features, set a resources object.
     alexa.resources = languageStrings;
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
-
