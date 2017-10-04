@@ -3,9 +3,10 @@
  */
 'use strict';
 
-const Alexa = require('alexa-sdk');
-
-const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65"; 
+// Strings
+const AWSregion = "us-east-1";
+const dbTable = "TrailSurferDB";
+const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65";
 
 const languageStrings = {
     'en': {
@@ -36,7 +37,17 @@ const languageStrings = {
     }
 };
 
+// Dependencies
+const Alexa = require('alexa-sdk');
+const awsSDK = require('aws-sdk');
+awsSDK.config.update({
+    region: AWSregion
+});
+
+const docClient = new awsSDK.DynamoDB.DocumentClient();
+
 const handlers = {
+    
     'LaunchRequest': function () {
         this.attributes.speechOutput = this.t('WELCOME_MESSAGE', this.t('SKILL_NAME'));
         // If the user either does not reply to 
@@ -49,6 +60,7 @@ const handlers = {
             this.attributes.repromptSpeech
         );
     },
+    
     'TrailSurf': function() {
         
         // Set default variables to be changed if slots are
@@ -57,6 +69,7 @@ const handlers = {
         
         // Get current intent object
         var intentObj = this.event.request.intent;
+        
         var slots = intentObj.slots;
         
         // Check to see if the slot has been defined yet
@@ -65,7 +78,7 @@ const handlers = {
         // to check if the given parameter exists as a key
         // in the object the method is called on
         if (slots.location.hasOwnProperty('value')) {
-            location = slots.location.value;
+            location = slots.location.value.toLowerCase();
         }
         
         //var length = slots.length.value;
@@ -75,13 +88,33 @@ const handlers = {
         console.log("Location: " + location);
         
         /* TODO: database querying here */
+        const dynamoParams = {
+            TableName: dbTable,
+            KeyConditionExpression: 'HikeLocation = :loc',
+            ExpressionAttributeValues: {
+                ':loc': location
+            }
+        };
         
-        // Emit response to user
-        this.emit(
-            ':ask', 
-            'I found 1 hike in ' + location
-            + 'Look for more?'
-        );
+        readDynamoItem(dynamoParams, myResult=>{
+            console.log(typeof myResult);
+            
+            // Store the number of hikes returned
+            var count = myResult.Count;
+            
+            console.log(count);
+            
+            // Emit response to user
+            this.emit(
+                ':ask', 
+                'I found ' + 
+                count + 
+                ' hike in ' + 
+                location
+                + '... Look for more?'
+            );
+        });
+        
     },
     'AMAZON.HelpIntent': function () {
         this.attributes.speechOutput = this.t('HELP_MESSAGE');
@@ -130,3 +163,25 @@ exports.handler = function (event, context) {
     alexa.registerHandlers(handlers);
     alexa.execute();
 };
+
+function readDynamoItem(params, callback) {
+
+    var AWS = require('aws-sdk');
+    AWS.config.update({region: AWSregion});
+
+    var docClient = new AWS.DynamoDB.DocumentClient();
+
+    console.log('reading item from DynamoDB table');
+
+    docClient.query(params, (err, data) => {
+        if (err) {
+            console.error("Unable to read item. Error JSON:", JSON.stringify(err, null, 2));
+        } else {
+            console.log("GetItem succeeded:", JSON.stringify(data, null, 2));
+
+            callback(data);  // this particular row has an attribute called message
+
+        }
+    });
+
+}
