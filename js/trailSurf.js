@@ -68,7 +68,7 @@ const handlers = {
         
         // Set default variables to be changed if slots are
         // specified
-        var location = "Sonoma State University";
+        var location = "rohnert park";
         var distance = 5;
         var length = 2;
         var difficulty = 1;
@@ -133,31 +133,51 @@ const handlers = {
             }
         };
         
+        // Read the items from the table that match 
+        // the given Location, difficulty, and length
         readDynamoItem(dynamoParams, myResult=>{
-            console.log(typeof myResult);
+            console.log(myResult);
+            
+            // Initialize the phrase that will be emitted
+            var phrase = 'I found ';
             
             // Store the number of hikes returned
             var count = myResult.Count;
+            var hikes = myResult.Items;
+            
             var hikeCountPhrase = '';
+            var hikeKnowledgePhrase = '';
             
             if (count == 1)
                 hikeCountPhrase = 'hike';
-            else 
+            else
                 hikeCountPhrase = 'hikes';
-                
             
-            console.log(count);
+            // Force pronunciation of Rohnert
+            if (location == 'rohnert park')
+                location = 'row nert park';
+            
+            // Build the phrase for the voice emission by Alexa
+            phrase = phrase + count + ' ' + hikeCountPhrase + 
+            ' near ' + location;
+            
+            // Decide whether to ask to look for more hikes (if none found)
+            // Or dive into the list returned from the call to the DB
+            if (count === 0)
+                phrase = phrase + '... Should I look for more?';
+            else {
+                
+                phrase = phrase + '... The first is ' +
+                hikes[0].HikeName + '...' +
+                'Would you like to know more about it?';
+                
+            }
+            
             
             // Emit response to user
             this.emit(
                 ':ask', 
-                'I found ' + 
-                count + 
-                ' ' +
-                hikeCountPhrase + 
-                ' near ' + 
-                location
-                + '... Look for more?'
+                phrase
             );
         });
         
