@@ -49,9 +49,18 @@ awsSDK.config.update({
 
 const docClient = new awsSDK.DynamoDB.DocumentClient();
 
+const states = {
+    started: '_STARTED',
+    surfing: '_SURFING'
+};
+
+// Intent Processing
 const handlers = {
     
     'LaunchRequest': function () {
+        
+        //this.handler.state = states.started;
+        
         this.attributes.speechOutput = this.t('WELCOME_MESSAGE', this.t('SKILL_NAME'));
         // If the user either does not reply to 
         // the welcome message or says something that is not
@@ -62,6 +71,7 @@ const handlers = {
             this.attributes.speechOutput,
             this.attributes.repromptSpeech
         );
+        
     },
     
     'TrailSurf': function() {
@@ -86,45 +96,19 @@ const handlers = {
         if (slots.location.hasOwnProperty('value')) {
             location = slots.location.value.toLowerCase();
         }
+        
         if (slots.distance.hasOwnProperty('value')) {
             distance = slots.distance.value;
         }
+        
         if (slots.length.hasOwnProperty('value')) {
             length = slots.length.value;
         }
+        
         if (slots.difficulty.hasOwnProperty('value')) {
             difficulty = slots.difficulty.value;
         }
         
-        //var length = slots.length.value;
-        //var difficulty = slots.difficulty.value;
-        
-        /* Testing some API for trails
-        /*
-        var https = require('https');
-        var optionsget = {
-            host: 'www.transitandtrails.org',
-            port: 443,
-            path: '/api/v1/trailheads.xml?key=4b0dd632421cd4c3b0126fd01a6e74343b97656e2ced5c24892990c2d77262e8',
-            methd: 'GET'
-        
-        }
-        
-        var reqGet = https.request(optionsget, function(res){
-            console.log("status" + res.statusCode);
-            res.on('data', function(d) {
-               console.log("GET result: \n");
-               console.log(d);
-            });
-        });
-        reqGet.end();
-        reqGet.on('error', function(e) {
-            console.log(e);
-        })
-        console.log(slots);
-        console.log("Location: " + location);
-        */
-        /* TODO: database querying here */
         const dynamoParams = {
             TableName: dbTable,
             KeyConditionExpression: 'HikeLocation = :loc',
@@ -168,11 +152,15 @@ const handlers = {
             else {
                 
                 phrase = phrase + '... The first is ' +
-                hikes[0].HikeName + '...' +
+                hikes[0].HikeName + '... ' +
+                'It is ' + hikes[0].HikeLength + ' miles long... ' +
                 'Would you like to know more about it?';
                 
             }
             
+            /* TODO: state handling for traversing the list
+            of results returned from DynamoDB*/
+            //this.handler.state = states.surfing;
             
             // Emit response to user
             this.emit(
@@ -182,6 +170,19 @@ const handlers = {
         });
         
     },
+    
+    /* TODO: integrate these intents with state persistence */
+    'AMAZON.YesIntent': function(){
+        this.emit(':tell', 'yes works');
+    },
+    'AMAZON.NoIntent': function(){
+        this.emit(':tell', 'no works');
+    },
+    'AMAZON.NextIntent': function(){
+        this.emit(':tell', 'next works');
+    },
+    /*********************************************************/
+    
     'AMAZON.HelpIntent': function () {
         this.attributes.speechOutput = this.t('HELP_MESSAGE');
         this.attributes.repromptSpeech = this.t('HELP_REPROMPT');
@@ -198,12 +199,20 @@ const handlers = {
             this.attributes.repromptSpeech
         );
     },
+    
+    // End session and exit skill
     'AMAZON.StopIntent': function () {
         this.emit('SessionEndedRequest');
     },
+    
+    // Cancel a command, but remain in the skill
     'AMAZON.CancelIntent': function () {
+        
+        // Will change this in the future
         this.emit('SessionEndedRequest');
     },
+    
+    // Save the state of the user from this session
     'SessionEndedRequest': function() {
         this.emit(
             ':tell',
@@ -222,8 +231,14 @@ const handlers = {
 };
 
 exports.handler = function (event, context) {
+    
     const alexa = Alexa.handler(event, context);
     alexa.appId = APP_ID;
+    
+    // Register the trailsurfer_state table for 
+    // State persistence through multiple sessions
+    alexa.dynamoDBTableName = 'trailsurfer_state';
+    
     // To enable string internationalization (i18n) features, set a resources object.
     alexa.resources = languageStrings;
     alexa.registerHandlers(handlers);
