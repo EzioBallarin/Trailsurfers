@@ -23,7 +23,10 @@ const languageStrings = {
 
         HELP_MESSAGE:
         "You can ask for something like,"  
-        + "find me a hike, or, you can say exit..." 
+        + "find me a hike, or, you can say exit."
+        + "You can also specify things such as a location"
+        + "of where to look for hikes, the desired trail's length,"
+        + " or the trail's difficulty."
         + "Now, what can I help you with?",
 
         HELP_REPROMPT:
@@ -66,6 +69,9 @@ const handlers = {
         // Set default variables to be changed if slots are
         // specified
         var location = "Sonoma State University";
+        var distance = 5;
+        var length = 2;
+        var difficulty = 1;
         
         // Get current intent object
         var intentObj = this.event.request.intent;
@@ -80,13 +86,44 @@ const handlers = {
         if (slots.location.hasOwnProperty('value')) {
             location = slots.location.value.toLowerCase();
         }
+        if (slots.distance.hasOwnProperty('value')) {
+            distance = slots.distance.value;
+        }
+        if (slots.length.hasOwnProperty('value')) {
+            length = slots.length.value;
+        }
+        if (slots.difficulty.hasOwnProperty('value')) {
+            difficulty = slots.difficulty.value;
+        }
         
         //var length = slots.length.value;
         //var difficulty = slots.difficulty.value;
         
+        /* Testing some API for trails
+        /*
+        var https = require('https');
+        var optionsget = {
+            host: 'www.transitandtrails.org',
+            port: 443,
+            path: '/api/v1/trailheads.xml?key=4b0dd632421cd4c3b0126fd01a6e74343b97656e2ced5c24892990c2d77262e8',
+            methd: 'GET'
+        
+        }
+        
+        var reqGet = https.request(optionsget, function(res){
+            console.log("status" + res.statusCode);
+            res.on('data', function(d) {
+               console.log("GET result: \n");
+               console.log(d);
+            });
+        });
+        reqGet.end();
+        reqGet.on('error', function(e) {
+            console.log(e);
+        })
         console.log(slots);
         console.log("Location: " + location);
-        
+        */
         /* TODO: database querying here */
         const dynamoParams = {
             TableName: dbTable,
@@ -101,6 +138,13 @@ const handlers = {
             
             // Store the number of hikes returned
             var count = myResult.Count;
+            var hikeCountPhrase = '';
+            
+            if (count == 1)
+                hikeCountPhrase = 'hike';
+            else 
+                hikeCountPhrase = 'hikes';
+                
             
             console.log(count);
             
@@ -109,7 +153,9 @@ const handlers = {
                 ':ask', 
                 'I found ' + 
                 count + 
-                ' hike in ' + 
+                ' ' +
+                hikeCountPhrase + 
+                ' near ' + 
                 location
                 + '... Look for more?'
             );
