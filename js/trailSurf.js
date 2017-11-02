@@ -23,10 +23,10 @@ const languageStrings = {
 
         HELP_MESSAGE:
         "You can ask for something like,"  
-        + "find me a hike, or, you can say exit."
-        + "You can also specify things such as a location"
-        + "of where to look for hikes, the desired trail's length,"
-        + " or the trail's difficulty."
+        + "find me a hike, or, you can say exit..."
+        + "You can also specify things such as where to look for hikes,"
+        + "the desired trail's length,"
+        + " or the trail's difficulty......"
         + "Now, what can I help you with?",
 
         HELP_REPROMPT:
@@ -35,7 +35,7 @@ const languageStrings = {
         + "Now, what can I help you with?",
 
         STOP_MESSAGE:
-        'Goodbye!',
+        'Okay, have fun hiking!',
         },
     }
 };
@@ -51,7 +51,9 @@ const docClient = new awsSDK.DynamoDB.DocumentClient();
 
 const states = {
     started: '_STARTED',
-    surfing: '_SURFING'
+    surfing: '_SURFING',
+    looping: '_LOOPING',
+    end: '_ENDED'
 };
 
 // Intent Processing
@@ -161,6 +163,10 @@ const handlers = {
             /* TODO: state handling for traversing the list
             of results returned from DynamoDB*/
             //this.handler.state = states.surfing;
+            this.attributes['state'] = states['surfing'];
+            this.attributes['hikes'] = hikes;
+            this.attributes['hikenum'] = 0;
+            this.attributes['hikecount'] = count;
             
             // Emit response to user
             this.emit(
@@ -173,13 +179,72 @@ const handlers = {
     
     /* TODO: integrate these intents with state persistence */
     'AMAZON.YesIntent': function(){
-        this.emit(':tell', 'yes works');
+        var response = '';
+        var state = this.attributes['state'];
+        console.log(this.attributes);
+        var hikes, hikenum, hikecount, curHike;
+        
+        if (state == states['surfing']) {
+            hikes = this.attributes['hikes'];
+            hikenum = this.attributes['hikenum'];
+            hikecount = this.attributes['hikecount'];
+            curHike = hikes[hikenum];
+            
+            response = response + curHike.HikeName + 
+            ' is ' + curHike.HikeDificulty + ' difficulty '
+            + '... and is ... ' + curHike.HikeType + ' hike... ';
+            if (hikenum + 1 >= hikecount) {
+                response = response + 'Look for more hikes?';
+                this.attributes['state'] = states['end'];
+                this.emit(':ask', response);
+            } else {
+                this.attributes['hikenum'] = this.attributes['hikenum'] + 1;
+                this.attributes['state'] = states['looping'];
+                response = response + 'Move to the next hike?';
+            }
+
+            this.emit(':ask', response);
+        } else if (state == states['looping']) {
+            
+            hikes = this.attributes['hikes'];
+            hikenum = this.attributes['hikenum'];
+            hikecount = this.attributes['count'];
+            curHike = hikes[hikenum];
+            
+            response = response + '... The next hike is ' +
+            curHike.HikeName + '... ' +
+            'It is ' + curHike.HikeLength + ' miles long... ' +
+            'Would you like to know more about it?';
+            this.attributes['state'] = states['surfing'];
+            this.emit(':ask', response);
+            
+        }
+        
+        this.emit(':ask', 
+                  'It looks like we ran out of hikes...' +
+                  'You can start a new search, or you can exit if you\'d like.');
     },
     'AMAZON.NoIntent': function(){
-        this.emit(':tell', 'no works');
+        this.emit('SessionEndedRequest');
     },
     'AMAZON.NextIntent': function(){
-        this.emit(':tell', 'next works');
+        var state = this.attributes['state'];
+        var response = '';
+        var hikes, hikenum, hikecount, curHike;
+        if (state == states['looping']) {
+            hikes = this.attributes['hikes'];
+            hikenum = this.attributes['hikenum'];
+            hikecount = this.attributes['count'];
+            curHike = hikes[hikenum];
+            
+            response = response + '... The next hike is ' +
+            curHike.HikeName + '... ' +
+            'It is ' + curHike.HikeLength + ' miles long... ' +
+            'Would you like to know more about it?';
+            this.attributes['state'] = states['surfing'];
+            this.emit(':ask', response);
+        }
+        //this.emit(':ask', 'Okay.');
     },
     /*********************************************************/
     
@@ -214,6 +279,7 @@ const handlers = {
     
     // Save the state of the user from this session
     'SessionEndedRequest': function() {
+        this.emit(':saveState', true);
         this.emit(
             ':tell',
             this.t('STOP_MESSAGE')
