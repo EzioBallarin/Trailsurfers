@@ -5,13 +5,22 @@
 
 // Strings
 const AWSregion = "us-east-1";
-const dbTable = "TrailSurferDB";
+const dbTable = "traildb";
 const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65";
 
 // Pronuncations of hike and hikes, since Alexa has trouble with these words.
 const _hike = '<phoneme alphabet="ipa" ph="haɪk"> hike</phoneme>';
 const _hikes = '<phoneme alphabet="ipa" ph="haɪks"> hikes</phoneme>';
 const _hiking = '<phoneme alphabet="ipa" ph="ˈhaɪkɪŋ"> hiking</phoneme>';
+
+// Conversion from a number to a word for the difficulty
+const difficulty = [
+    "easy",
+    "moderate",
+    "medium",
+    "medium hard",
+    "hard"
+];
 
 const languageStrings = {
     'en': {
@@ -128,7 +137,11 @@ const handlers = {
             KeyConditionExpression: 'HikeLocation = :loc',
             ExpressionAttributeValues: {
                 ':loc': location
-            }
+            },
+            
+            // Will change this later. Hard coded so that too many 
+            // returned items doesn't slow down the skill.
+            Limit: 20
         };
         
         // Read the items from the table that match 
@@ -167,7 +180,7 @@ const handlers = {
                 
                 phrase = phrase + '... The first is ' +
                 hikes[0].HikeName + '... ' +
-                'It is ' + hikes[0].HikeLength + ' miles long... ' +
+                'It is ' + hikes[0].TrailLength + ' miles long... ' +
                 'Would you like to know more about it?';
                 
             }
@@ -203,6 +216,9 @@ const handlers = {
         var looping = this.attributes.looping;
         var hikes, hikenum, hikecount, curHike;
         
+        if (state == states.end)
+            this.emit(':ask', this.attributes.repromptSpeech);
+        
         // If the user has already searched for hikes,
         // and they have not begun traversing the paginated hikes
         if (state == states.surfing && looping) {
@@ -222,8 +238,8 @@ const handlers = {
             curHike = hikes[hikenum];
             
             response = response + curHike.HikeName + 
-            ' is ' + curHike.HikeDificulty + ' difficulty '
-            + '... and is ... ' + curHike.HikeType + ' hike... ';
+            ' is ' + difficulty[curHike.SkillLevel - 1] + ' difficulty '
+            + '... and is a ' + curHike.TrailType + ' hike... ';
             
             this.attributes.looping = false;
             
@@ -266,7 +282,7 @@ const handlers = {
             
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
-            'It is ' + curHike.HikeLength + ' miles long... ' +
+            'It is ' + curHike.TrailLength + ' miles long... ' +
             'Would you like to know more about it?';
             
             this.attributes.looping = true;
@@ -280,13 +296,16 @@ const handlers = {
     
     // Handler for users saying "no" during the pagination of results from a list of hikes
     'AMAZON.NoIntent': function(){
-        
 
         // Check state of skill, and check if there was a paginated data set returned
         var state = this.attributes.state;
         var looping = this.attributes.looping;
         console.log("NoIntent called");
         console.log("State: " + state, "Looping: " + looping);
+        
+                
+        if (state == states.end)
+            this.emit(':ask', this.attributes.repromptSpeech);
         
         // If we potentially have more hikes, call the NextIntent to handle it
         if (state == states.surfing && looping) {
@@ -328,6 +347,10 @@ const handlers = {
         
         console.log("State: " + state, "Looping: " + looping);
         
+                
+        if (state == states.end)
+            this.emit(':ask', this.attributes.repromptSpeech);
+        
         // If we're looping through paginated results for a hikes query
         if (state == states.surfing && looping) {
             hikes = this.attributes.hikes;
@@ -348,7 +371,7 @@ const handlers = {
             
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
-            'It is ' + curHike.HikeLength + ' miles long... ' +
+            'It is ' + curHike.TrailLength + ' miles long... ' +
             'Would you like to know more about it?';
             this.attributes.state = states.surfing;
             this.emit(':ask', response);
