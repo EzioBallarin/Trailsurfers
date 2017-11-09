@@ -206,7 +206,6 @@ const handlers = {
         // If the user has already searched for hikes,
         // and they have not begun traversing the paginated hikes
         if (state == states.surfing && looping) {
-
             // Grab the hikes found
             hikes = this.attributes.hikes;
             
@@ -215,6 +214,12 @@ const handlers = {
             
             // Grab the count of returned hikes
             hikecount = this.attributes.hikecount;
+            
+            // If no hikes were found, stop here and reprompt user for
+            // a new search, or a stop intent
+            if (hikecount === 0) {
+                this.emit(':ask', this.attributes.repromptSpeech);
+            }
             
             // Store the current hike
             curHike = hikes[hikenum];
@@ -331,6 +336,13 @@ const handlers = {
             hikes = this.attributes.hikes;
             hikenum = this.attributes.hikenum;
             hikecount = this.attributes.hikecount;
+            
+            // If no hikes were found, stop here and reprompt user for
+            // a new search, or a stop intent
+            if (hikecount === 0) {
+                this.emit(':ask', this.attributes.repromptSpeech);
+            }
+                
             curHike = hikes[hikenum];
             
             response = response + '... The next hike is ' +
@@ -340,6 +352,11 @@ const handlers = {
             this.attributes.state = states.surfing;
             this.emit(':ask', response);
             
+        // If no hikes were found, stop here and reprompt user for
+        // a new search, or a stop intent
+        } else if (this.attributes.hikecount === 0) {
+            this.emit(':ask', this.attributes.repromptSpeech);
+        
         // Prompt user for more hikes
         } else {
             this.attributes.looping = false;
