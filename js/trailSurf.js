@@ -27,16 +27,16 @@ const languageStrings = {
         'For instructions on what you can say, please say help me.',
 
         HELP_MESSAGE:
-        "You can ask for something like,"  
+        "You can ask for something like "  
         + "find me a hike, or, you can say exit..."
-        + "You can also specify things such as where to look for hikes,"
-        + "the desired trail's length,"
-        + " or the trail's difficulty......"
+        + "You can also specify things such as where to look for hikes, "
+        + "the desired trail's length, "
+        + "or the trail's difficulty......"
         + "Now, what can I help you with?",
 
         HELP_REPROMPT:
-        "You can ask for something like," 
-        + "find me a hike, or, you can say exit..."
+        "You can ask for something like, " 
+        + "find me a hike, or, you can say exit... "
         + "Now, what can I help you with?",
 
         STOP_MESSAGE:
@@ -215,11 +215,8 @@ const handlers = {
             // Grab the count of returned hikes
             hikecount = this.attributes.hikecount;
             
-            // If no hikes were found, stop here and reprompt user for
-            // a new search, or a stop intent
-            if (hikecount === 0) {
+            if (hikecount === 0)
                 this.emit(':ask', this.attributes.repromptSpeech);
-            }
             
             // Store the current hike
             curHike = hikes[hikenum];
@@ -321,7 +318,7 @@ const handlers = {
         
         console.log("NextIntent called");
         
-        // Check the skill's state, and if we are traversing a list of hikes
+        // Check the skill's state, and if we are traversing a list of hikes.
         // Also declare variables for an eventual response, and
         // relevant information about the current hike
         var state = this.attributes.state;
@@ -334,13 +331,17 @@ const handlers = {
         // If we're looping through paginated results for a hikes query
         if (state == states.surfing && looping) {
             hikes = this.attributes.hikes;
+            this.attributes.hikenum = this.attributes.hikenum + 1;
             hikenum = this.attributes.hikenum;
             hikecount = this.attributes.hikecount;
+            console.log("Hikenum: " + hikenum, "Hikecount: " + hikecount);
             
-            // If no hikes were found, stop here and reprompt user for
-            // a new search, or a stop intent
             if (hikecount === 0) {
                 this.emit(':ask', this.attributes.repromptSpeech);
+            }
+            
+            if (hikenum >= hikecount) {
+                this.emit(':ask', 'Okay, I\'m out of ' + _hikes + ', look for more?');
             }
                 
             curHike = hikes[hikenum];
@@ -352,12 +353,9 @@ const handlers = {
             this.attributes.state = states.surfing;
             this.emit(':ask', response);
             
-        // If no hikes were found, stop here and reprompt user for
-        // a new search, or a stop intent
+        // Prompt user for more hikes
         } else if (this.attributes.hikecount === 0) {
             this.emit(':ask', this.attributes.repromptSpeech);
-        
-        // Prompt user for more hikes
         } else {
             this.attributes.looping = false;
             this.emit(':ask', 'Okay, ' 
