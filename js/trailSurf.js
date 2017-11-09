@@ -237,9 +237,11 @@ const handlers = {
             // Store the current hike
             curHike = hikes[hikenum];
             
+            var properArticle = findProperArticle(curHike.TrailType);
+            
             response = response + curHike.HikeName + 
             ' is ' + difficulty[curHike.SkillLevel - 1] + ' difficulty '
-            + '... and is a ' + curHike.TrailType + ' hike... ';
+            + '... and is ' + properArticle + ' ' + curHike.TrailType + ' type hike... ';
             
             this.attributes.looping = false;
             
@@ -471,4 +473,12 @@ function readDynamoItem(params, callback) {
         }
     });
 
+}
+
+function findProperArticle(hikeType) {
+    var firstChar = hikeType.substring(0,1).toLowerCase();
+    var article = 'a';
+    if (firstChar == 'o')
+        article = 'an';
+    return article;
 }
