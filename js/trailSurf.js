@@ -8,6 +8,11 @@ const AWSregion = "us-east-1";
 const dbTable = "TrailSurferDB";
 const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65";
 
+// Pronuncations of hike and hikes, since Alexa has trouble with these words.
+const _hike = '<phoneme alphabet="ipa" ph="haɪk"> hike</phoneme>';
+const _hikes = '<phoneme alphabet="ipa" ph="haɪks"> hikes</phoneme>';
+const _hiking = '<phoneme alphabet="ipa" ph="ˈhaɪkɪŋ"> hiking</phoneme>';
+
 const languageStrings = {
     'en': {
         translation: {
@@ -35,7 +40,8 @@ const languageStrings = {
         + "Now, what can I help you with?",
 
         STOP_MESSAGE:
-        'Okay, have fun hiking!',
+        'Okay, have fun ' + _hiking + '!',
+        
         },
     }
 };
@@ -52,7 +58,6 @@ const docClient = new awsSDK.DynamoDB.DocumentClient();
 const states = {
     started: '_STARTED',
     surfing: '_SURFING',
-    looping: '_LOOPING',
     end: '_ENDED'
 };
 
@@ -61,9 +66,11 @@ const handlers = {
     
     'LaunchRequest': function () {
         
-        //this.handler.state = states.started;
+        this.attributes.state = states.started;
+        this.attributes.looping = false;
         
         this.attributes.speechOutput = this.t('WELCOME_MESSAGE', this.t('SKILL_NAME'));
+        
         // If the user either does not reply to 
         // the welcome message or says something that is not
         // understood, they will be prompted again with this text.
@@ -76,7 +83,12 @@ const handlers = {
         
     },
     
+    /* Not sure how to fix incorrect utterances mapped to this intent*/
     'TrailSurf': function() {
+        
+        console.log("TrailSurf Intent called");
+        console.log("State: " + this.attributes.state);
+        console.log("Looping: " + this.attributes.looping);
         
         // Set default variables to be changed if slots are
         // specified
@@ -160,13 +172,18 @@ const handlers = {
                 
             }
             
-            /* TODO: state handling for traversing the list
-            of results returned from DynamoDB*/
-            //this.handler.state = states.surfing;
-            this.attributes['state'] = states['surfing'];
-            this.attributes['hikes'] = hikes;
-            this.attributes['hikenum'] = 0;
-            this.attributes['hikecount'] = count;
+            // Set current state to be surfing for trails
+            // Essentially means we have found hikes, and may or may
+            // not be traversing a list of returned results
+            this.attributes.state = states['surfing'];
+            this.attributes.looping = true;
+            
+            // Store the returned hikes from DynamoDB into a session varibale,
+            // along with the index of the first hike found, 
+            // and the overall number of hikes found
+            this.attributes.hikes = hikes;
+            this.attributes.hikenum = 0;
+            this.attributes.hikecount = count;
             
             // Emit response to user
             this.emit(
@@ -177,76 +194,162 @@ const handlers = {
         
     },
     
-    /* TODO: integrate these intents with state persistence */
+    
     'AMAZON.YesIntent': function(){
+        
+        if (this.attributes.state != states.surfing) {
+            this.emit('AMAZON.HelpIntent');
+        }
+        
         var response = '';
-        var state = this.attributes['state'];
-        console.log(this.attributes);
+        var state = this.attributes.state;
+        var looping = this.attributes.looping;
         var hikes, hikenum, hikecount, curHike;
         
-        if (state == states['surfing']) {
-            hikes = this.attributes['hikes'];
-            hikenum = this.attributes['hikenum'];
-            hikecount = this.attributes['hikecount'];
+        // If the user has already searched for hikes,
+        // and they have not begun traversing the paginated hikes
+        if (state == states.surfing && looping) {
+
+            // Grab the hikes found
+            hikes = this.attributes.hikes;
+            
+            // Grab the current hike index in the list 
+            hikenum = this.attributes.hikenum;
+            
+            // Grab the count of returned hikes
+            hikecount = this.attributes.hikecount;
+            
+            // Store the current hike
             curHike = hikes[hikenum];
             
             response = response + curHike.HikeName + 
             ' is ' + curHike.HikeDificulty + ' difficulty '
             + '... and is ... ' + curHike.HikeType + ' hike... ';
+            
+            this.attributes.looping = false;
+            
+            // If there is no next hike, prompt the user for more hikes.
             if (hikenum + 1 >= hikecount) {
-                response = response + 'Look for more hikes?';
-                this.attributes['state'] = states['end'];
+                response = response + ' '
+                + 'and is the last ' + _hike + ' in that area. Feel free to start over or quit.';
+                this.attributes.state = states.end;
                 this.emit(':ask', response);
+            
+            // Start looping through the hikes
             } else {
-                this.attributes['hikenum'] = this.attributes['hikenum'] + 1;
-                this.attributes['state'] = states['looping'];
+                this.attributes.hikenum = this.attributes.hikenum + 1;
                 response = response + 'Move to the next hike?';
             }
 
             this.emit(':ask', response);
-        } else if (state == states['looping']) {
+        
+        // If the user has already searched for hikes,
+        // and they HAVE begun traversing the paginated hikes
+        } else if (state == states.surfing && !looping) {
             
-            hikes = this.attributes['hikes'];
-            hikenum = this.attributes['hikenum'];
-            hikecount = this.attributes['count'];
+            // Grab the hikes found
+            hikes = this.attributes.hikes;
+            
+            // Grab current hike index in the list
+            hikenum = this.attributes.hikenum;
+            
+            // Grab the total number of hikes in the list
+            hikecount = this.attributes.hikecount;
+            
+            // Store the current hike
             curHike = hikes[hikenum];
             
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
             'It is ' + curHike.HikeLength + ' miles long... ' +
             'Would you like to know more about it?';
-            this.attributes['state'] = states['surfing'];
+            
+            this.attributes.looping = true;
+            
             this.emit(':ask', response);
             
         }
         
-        this.emit(':ask', 
-                  'It looks like we ran out of hikes...' +
-                  'You can start a new search, or you can exit if you\'d like.');
+        this.emit(':tell', '');
     },
+    
+    // Handler for users saying "no" during the pagination of results from a list of hikes
     'AMAZON.NoIntent': function(){
-        this.emit('SessionEndedRequest');
+        
+        if (this.attributes.state != states.surfing) {
+            this.emit('AMAZON.HelpIntent');
+        }
+        
+        // Check state of skill, and check if there was a paginated data set returned
+        var state = this.attributes.state;
+        var looping = this.attributes.looping;
+        console.log("NoIntent called");
+        console.log("State: " + state, "Looping: " + looping);
+        
+        // If we potentially have more hikes, call the NextIntent to handle it
+        if (state == states.surfing && looping) {
+            console.log("No pressed, trying to move onto next");
+            console.log("Checking if next hike would be out of bounds");
+            console.log("Next hike: " + this.attributes.hikenum + 1);
+            console.log("Num of hikes: " + this.attributes.hikecount);
+            // If the next hike would be out of bounds, 
+            // set the looping flag to false
+            if (this.attributes.hikenum + 1 >= this.attributes.hikecount)
+                this.attributes.looping = false;
+            // Let the NextIntent handler take over
+            this.emit('AMAZON.NextIntent');
+        } 
+        
+        if (state == states.surfing && !looping) {
+            this.emit('SessionEndedRequest');
+        }
+        
+        // Otherwise, we either aren't looping, or don't have any more hikes.
+        this.emit(':ask', this.t('WELCOME_REPROMPT'));
+
     },
+    
+    // Handler for users saying "next" during the pagination of results form a list of hikes
     'AMAZON.NextIntent': function(){
-        var state = this.attributes['state'];
+        
+        if (this.attributes.state != states.surfing) {
+            this.emit('AMAZON.HelpIntent');
+        }
+        
+        console.log("NextIntent called");
+        
+        // Check the skill's state, and if we are traversing a list of hikes
+        // Also declare variables for an eventual response, and
+        // relevant information about the current hike
+        var state = this.attributes.state;
+        var looping = this.attributes.looping;
         var response = '';
         var hikes, hikenum, hikecount, curHike;
-        if (state == states['looping']) {
-            hikes = this.attributes['hikes'];
-            hikenum = this.attributes['hikenum'];
-            hikecount = this.attributes['count'];
+        
+        console.log("State: " + state, "Looping: " + looping);
+        
+        // If we're looping through paginated results for a hikes query
+        if (state == states.surfing && looping) {
+            hikes = this.attributes.hikes;
+            hikenum = this.attributes.hikenum;
+            hikecount = this.attributes.hikecount;
             curHike = hikes[hikenum];
             
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
             'It is ' + curHike.HikeLength + ' miles long... ' +
             'Would you like to know more about it?';
-            this.attributes['state'] = states['surfing'];
+            this.attributes.state = states.surfing;
             this.emit(':ask', response);
+            
+        // Prompt user for more hikes
+        } else {
+            this.attributes.looping = false;
+            this.emit(':ask', 'Okay, ' 
+            +'I\'m out of ' + _hikes + ' , look for more?');
         }
-        //this.emit(':ask', 'Okay.');
+        
     },
-    /*********************************************************/
     
     'AMAZON.HelpIntent': function () {
         this.attributes.speechOutput = this.t('HELP_MESSAGE');
@@ -270,7 +373,7 @@ const handlers = {
         this.emit('SessionEndedRequest');
     },
     
-    // Cancel a command, but remain in the skill
+    // Functionally the same as stop
     'AMAZON.CancelIntent': function () {
         
         // Will change this in the future
@@ -279,12 +382,13 @@ const handlers = {
     
     // Save the state of the user from this session
     'SessionEndedRequest': function() {
-        this.emit(':saveState', true);
+        //this.emit(':saveState', true);
         this.emit(
             ':tell',
             this.t('STOP_MESSAGE')
         );
     },
+    
     'Unhandled': function () {
         this.attributes.speechOutput = this.t('HELP_MESSAGE');
         this.attributes.repromptSpeech = this.t('HELP_REPROMPT');
