@@ -197,9 +197,6 @@ const handlers = {
     
     'AMAZON.YesIntent': function(){
         
-        if (this.attributes.state != states.surfing) {
-            this.emit('AMAZON.HelpIntent');
-        }
         
         var response = '';
         var state = this.attributes.state;
@@ -259,6 +256,12 @@ const handlers = {
             // Store the current hike
             curHike = hikes[hikenum];
             
+            // If there is no next hike, prompt the user for more hikes.
+            if (hikenum >= hikecount) {
+                this.attributes.state = states.end;
+                this.emit(':ask', this.attributes.repromptSpeech);
+            }
+            
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
             'It is ' + curHike.HikeLength + ' miles long... ' +
@@ -276,10 +279,7 @@ const handlers = {
     // Handler for users saying "no" during the pagination of results from a list of hikes
     'AMAZON.NoIntent': function(){
         
-        if (this.attributes.state != states.surfing) {
-            this.emit('AMAZON.HelpIntent');
-        }
-        
+
         // Check state of skill, and check if there was a paginated data set returned
         var state = this.attributes.state;
         var looping = this.attributes.looping;
@@ -296,7 +296,9 @@ const handlers = {
             // set the looping flag to false
             if (this.attributes.hikenum + 1 >= this.attributes.hikecount)
                 this.attributes.looping = false;
-            // Let the NextIntent handler take over
+            
+            // Let the hike at hikenum and let NextIntent handler take over
+            this.attributes.hikenum = this.attributes.hikenum + 1;
             this.emit('AMAZON.NextIntent');
         } 
         
@@ -311,10 +313,6 @@ const handlers = {
     
     // Handler for users saying "next" during the pagination of results form a list of hikes
     'AMAZON.NextIntent': function(){
-        
-        if (this.attributes.state != states.surfing) {
-            this.emit('AMAZON.HelpIntent');
-        }
         
         console.log("NextIntent called");
         
