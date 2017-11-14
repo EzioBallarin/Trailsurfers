@@ -13,13 +13,14 @@ const _hike = '<phoneme alphabet="ipa" ph="haɪk"> hike</phoneme>';
 const _hikes = '<phoneme alphabet="ipa" ph="haɪks"> hikes</phoneme>';
 const _hiking = '<phoneme alphabet="ipa" ph="ˈhaɪkɪŋ"> hiking</phoneme>';
 
-// Conversion from a number to a word for the difficulty
+// Conversion from a number in our DynamoDB table
+// to a word for the difficulty of a trail.
 const difficulty = [
-    "easy",
-    "moderate",
-    "medium",
-    "medium hard",
-    "hard"
+    'easy', 
+    'moderate', 
+    'medium', 
+    'medium hard', 
+    'hard'
 ];
 
 const languageStrings = {
@@ -29,27 +30,34 @@ const languageStrings = {
 
         WELCOME_MESSAGE: 
         "Welcome to %s. "
-        + "You can ask for something like, find me a hike."
+        + "You can ask for something like, find me a " + _hike + "."
         + "... Now, what can I help you with?",
 
         WELCOME_REPROMPT:
         'For instructions on what you can say, please say help me.',
 
         HELP_MESSAGE:
-        "You can ask for something like "  
-        + "find me a hike, or, you can say exit..."
-        + "You can also specify things such as where to look for hikes, "
-        + "the desired trail's length, "
-        + "or the trail's difficulty......"
+        "You can ask for something like,"  
+        + "find me a " + _hike + ", or, you can say exit..."
+        + "You can also specify things such as where to look for hikes,"
+        + "the desired trail's length,"
+        + " or the trail's difficulty......"
         + "Now, what can I help you with?",
 
         HELP_REPROMPT:
-        "You can ask for something like, " 
-        + "find me a hike, or, you can say exit... "
+        "You can ask for something like," 
+        + "find me a " + _hike + ", or, you can say exit..."
         + "Now, what can I help you with?",
 
         STOP_MESSAGE:
         'Okay, have fun ' + _hiking + '!',
+        
+        STOP_MESSAGE_WITH_CARD:
+        'Okay, I sent a card to your Alexa app with the last ' + _hike + ' we found.' 
+        + 'Have fun ' + _hiking + '!',
+        
+        CANCEL_MESSAGE:
+        'Okay, you can start a new search if you\'d like.'
         
         },
     }
@@ -137,11 +145,7 @@ const handlers = {
             KeyConditionExpression: 'HikeLocation = :loc',
             ExpressionAttributeValues: {
                 ':loc': location
-            },
-            
-            // Will change this later. Hard coded so that too many 
-            // returned items doesn't slow down the skill.
-            Limit: 20
+            }
         };
         
         // Read the items from the table that match 
@@ -160,9 +164,9 @@ const handlers = {
             var hikeKnowledgePhrase = '';
             
             if (count == 1)
-                hikeCountPhrase = 'hike';
+                hikeCountPhrase = _hike;
             else
-                hikeCountPhrase = 'hikes';
+                hikeCountPhrase = _hikes;
             
             // Force pronunciation of Rohnert
             if (location == 'rohnert park')
@@ -241,7 +245,7 @@ const handlers = {
             
             response = response + curHike.HikeName + 
             ' is ' + difficulty[curHike.SkillLevel - 1] + ' difficulty '
-            + '... and is ' + properArticle + ' ' + curHike.TrailType + ' type hike... ';
+            + '... and is ' + properArticle + ' ' + curHike.TrailType + ' ' + _hike + ' ... ';
             
             this.attributes.looping = false;
             
@@ -255,7 +259,7 @@ const handlers = {
             // Start looping through the hikes
             } else {
                 this.attributes.hikenum = this.attributes.hikenum + 1;
-                response = response + 'Move to the next hike?';
+                response = response + ' Should I move to the next ' + _hike + ', ?';
             }
 
             this.emit(':ask', response);
@@ -282,7 +286,7 @@ const handlers = {
                 this.emit(':ask', this.attributes.repromptSpeech);
             }
             
-            response = response + '... The next hike is ' +
+            response = response + '... The next ' + _hike + ' is ' +
             curHike.HikeName + '... ' +
             'It is ' + curHike.TrailLength + ' miles long... ' +
             'Would you like to know more about it?';
@@ -298,6 +302,7 @@ const handlers = {
     
     // Handler for users saying "no" during the pagination of results from a list of hikes
     'AMAZON.NoIntent': function(){
+        
 
         // Check state of skill, and check if there was a paginated data set returned
         var state = this.attributes.state;
@@ -317,11 +322,13 @@ const handlers = {
             console.log("Num of hikes: " + this.attributes.hikecount);
             // If the next hike would be out of bounds, 
             // set the looping flag to false
-            if (this.attributes.hikenum + 1 >= this.attributes.hikecount)
+            if (this.attributes.hikenum + 1 > this.attributes.hikecount) {
                 this.attributes.looping = false;
+                this.emit('SessionEndedRequest');   
+            }
             
             // Let the hike at hikenum and let NextIntent handler take over
-            this.attributes.hikenum = this.attributes.hikenum + 1;
+            //this.attributes.hikenum = this.attributes.hikenum + 1;
             this.emit('AMAZON.NextIntent');
         } 
         
@@ -336,6 +343,7 @@ const handlers = {
     
     // Handler for users saying "next" during the pagination of results form a list of hikes
     'AMAZON.NextIntent': function(){
+        
         
         console.log("NextIntent called");
         
@@ -414,8 +422,14 @@ const handlers = {
     // Functionally the same as stop
     'AMAZON.CancelIntent': function () {
         
+        this.attributes.state = null;
+        this.attributes.looping = false;
+        this.attributes.hikes = null;
+        this.attributes.hikenum = 0;
+        this.attributes.hikecount = 0;
+        
         // Will change this in the future
-        this.emit('SessionEndedRequest');
+        this.emit(':ask', this.t('CANCEL_MESSAGE'));
     },
     
     // Save the state of the user from this session
