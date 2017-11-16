@@ -10,10 +10,21 @@ const AWSregion = "us-east-1";
 const dbTable = "traildb";
 const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65";
 
+// Dependencies to register our handlers with Alexa and AWS
+const Alexa = require('alexa-sdk');
+const awsSDK = require('aws-sdk');
+awsSDK.config.update({
+    region: AWSregion
+});
+
+// Dependency for the eventual DynamoDB query
+const docClient = new awsSDK.DynamoDB.DocumentClient();
+
 // Pronuncations of hike and hikes, since Alexa has trouble with these words.
 const _hike = '<phoneme alphabet="ipa" ph="haɪk"> hike</phoneme>';
 const _hikes = '<phoneme alphabet="ipa" ph="haɪks"> hikes</phoneme>';
 const _hiking = '<phoneme alphabet="ipa" ph="ˈhaɪkɪŋ"> hiking</phoneme>';
+const _rp = '<phoneme alphabet="ipa" ph="ɹəʊnərt pɑɹk">Rohnert Park</phoneme>';
 
 // Conversion from a number in our DynamoDB table
 // to a word for the difficulty of a trail.
@@ -25,6 +36,15 @@ const difficulty = [
     'very difficult'
 ];
 
+// Different states to give context for our conversation
+const states = {
+    started: '_STARTED',
+    surfing: '_SURFING',
+    end: '_ENDED'
+};
+
+// English constant strings that do not need to change
+// since they are instructional, or general (like the STOP_MESSAGE) 
 const languageStrings = {
     'en': {
         translation: {
@@ -32,7 +52,7 @@ const languageStrings = {
 
         WELCOME_MESSAGE: 
         "Welcome to %s. "
-        + "You can ask for something like, find me a " + _hike + "."
+        + "You can ask for something like find me a " + _hike + " in " + _rp + "."
         + "<break time='0.15s'/> Now, what can I help you with?",
 
         WELCOME_REPROMPT:
@@ -40,7 +60,7 @@ const languageStrings = {
 
         HELP_MESSAGE:
         "You can ask for something like,"  
-        + "find me a " + _hike + ", or, you can say exit..."
+        + "find me a " + _hike + " in " + _rp + ", or, you can say exit..."
         + "You can also specify things such as where to look for hikes,"
         + "the desired trail's length,"
         + " or the trail's difficulty......"
@@ -48,7 +68,7 @@ const languageStrings = {
 
         HELP_REPROMPT:
         "You can ask for something like," 
-        + "find me a " + _hike + ", or, you can say exit..."
+        + "find me a " + _hike + " in " + _rp + ", or, you can say exit..."
         + "Now, what can I help you with?",
 
         STOP_MESSAGE:
@@ -65,24 +85,11 @@ const languageStrings = {
     }
 };
 
-// Dependencies
-const Alexa = require('alexa-sdk');
-const awsSDK = require('aws-sdk');
-awsSDK.config.update({
-    region: AWSregion
-});
 
-const docClient = new awsSDK.DynamoDB.DocumentClient();
-
-const states = {
-    started: '_STARTED',
-    surfing: '_SURFING',
-    end: '_ENDED'
-};
-
-// Intent Processing
+// Register handler functions for all intents
 const handlers = {
     
+    // On skill launch, give brief welcome message and initialize contextual variables
     'LaunchRequest': function () {
         
         // Give our skill's variables a clean slate
@@ -105,7 +112,8 @@ const handlers = {
         
     },
     
-    /* Not sure how to fix incorrect utterances mapped to this intent*/
+    // Core function for this intent. Search the database in DynamoDB for 
+    // trails which match the given slots defined by the user
     'TrailSurf': function() {
         
         console.log("TrailSurf Intent called");
@@ -153,6 +161,11 @@ const handlers = {
             }
         };
         
+        console.log('converting test zipcode to city');
+        zipToCity(94928, result => {
+           console.log(JSON.parse(result)); 
+        });
+        
         // Read the items from the table that match 
         // the given Location, difficulty, and length
         readDynamoItem(dynamoParams, myResult=>{
@@ -177,7 +190,7 @@ const handlers = {
             
             // Force pronunciation of Rohnert
             if (location == 'rohnert park')
-                location = 'row nert park';
+                location = _rp + '<break time=".15s"/>';
             
             // Build the phrase for the voice emission by Alexa
             phrase = phrase + count + ' ' + hikeCountPhrase + 
@@ -187,7 +200,7 @@ const handlers = {
             // Or dive into the list returned from the call to the DB
             if (count === 0) {
                 phrase = 'Sorry, I found no hikes near ' + location
-                        + '... Should I look for more?'
+                        + '... Try giving us a zip code or nearby city instead.'
                 this.attributes.noHikes = true;
             } else {
                 
@@ -195,9 +208,9 @@ const handlers = {
                 hikeName = hikes[0].HikeName;
                 directions = hikes[0].DirectionLink;
                 
-                phrase = phrase + '... The first is ' +
-                hikeName + '... ' +
-                'It is ' + hikes[0].Length + ' miles long... ' +
+                phrase = phrase + '. The first is ' +
+                hikeName + ', ' +
+                'it is ' + hikes[0].Length + ' miles long. ' +
                 'Would you like to know more about it?';
                 
             }
@@ -217,15 +230,15 @@ const handlers = {
             
             //this.emit(':askWithCard', speechOutput, repromptSpeech, cardTitle, cardContent, imageObj);
             // Emit response to user
-            this.emit(
+            /*this.emit(
                 ':askWithCard', 
                 phrase,
                 phrase, 
                 hikeName, 
                 directions
-            );
+            );*/
             
-            //this.emit(':ask', phrase);
+            this.emit(':ask', phrase);
         });
         
     },
@@ -542,5 +555,35 @@ function durationToEnglish(duration) {
         phrase += ' hours ';
     
     return phrase;
+    
+}
+
+function zipToCity(zip, callback) {
+    
+    console.log()
+    
+    // Dependency for any HTTPS requests that may come up
+    var https = require('https');
+    
+    var apikey = "MyQgHA31pDcUnkLyLPwZX4Vx34ZWJ8QaUahM9MyifovoBt3ANRw65EQjv7YoTwo1";
+    var city;
+    var url = "https://www.zipcodeapi.com/rest/" + apikey + "/info.json/" + zip + "/radians";
+    
+    console.log("Calling https.get() on " + url);
+    
+    https.get(url, (res) => {
+        let data = '';
+        console.log(res);
+        console.log("ZipcodeAPI Status: " + res.statusCode);
+        res.on('data', (d) => {
+            data += d;
+            console.log(data);
+        });
+        res.on('end', (resp) => {
+            callback(data);
+        });
+    }).on('error', (e) => {
+        console.error(e);
+    });
     
 }
