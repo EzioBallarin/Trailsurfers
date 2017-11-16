@@ -197,7 +197,7 @@ const handlers = {
                 
                 phrase = phrase + '... The first is ' +
                 hikeName + '... ' +
-                'It is ' + hikes[0].TrailLength + ' miles long... ' +
+                'It is ' + hikes[0].Length + ' miles long... ' +
                 'Would you like to know more about it?';
                 
             }
@@ -309,7 +309,7 @@ const handlers = {
             
             response = response + '... The next ' + _hike + ' is ' +
             curHike.HikeName + '... ' +
-            'It is ' + curHike.TrailLength + ' miles long... ' +
+            'It is ' + curHike.Length + ' miles long... ' +
             'Would you like to know more about it?';
             
             this.attributes.looping = true;
@@ -402,7 +402,7 @@ const handlers = {
             
             response = response + '... The next hike is ' +
             curHike.HikeName + '... ' +
-            'It is ' + curHike.TrailLength + ' miles long... ' +
+            'It is ' + curHike.Length + ' miles long... ' +
             'Would you like to know more about it?';
             this.attributes.state = states.surfing;
             this.emit(':ask', response);
