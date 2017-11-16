@@ -36,6 +36,10 @@ const difficulty = [
     'very difficult'
 ];
 
+const difficultyWord = [
+  'easy', 'moderate', 'medium', 'medium-hard', 'hard'  
+];
+
 // Different states to give context for our conversation
 const states = {
     started: '_STARTED',
@@ -122,6 +126,7 @@ const handlers = {
         
         // Set default variables to be changed if slots are specified
         var location = "rohnert park";
+        var locationSlotExists = false;
         var distance = 5;
         var length = 2;
         var difficulty = 1;
@@ -138,6 +143,8 @@ const handlers = {
         // in the object the method is called on
         if (slots.location.hasOwnProperty('value')) {
             location = slots.location.value.toLowerCase();
+            locationSlotExists = true;
+            console.log("Location slot filled with " + location);
         }
         
         if (slots.distance.hasOwnProperty('value')) {
@@ -158,13 +165,40 @@ const handlers = {
             KeyConditionExpression: 'HikeLocation = :loc',
             ExpressionAttributeValues: {
                 ':loc': location
-            }
+            },
+            
+            // Limits the number of items returned to 25
+            // Anything beyond this causes a timeout in the skill
+            Limit: 25
         };
         
-        console.log('converting test zipcode to city');
-        zipToCity(94928, result => {
-           console.log(JSON.parse(result)); 
+        
+        /* I attempted to alleviate the above issue with timeouts 
+         * causing invalid responses by using batchGetParams, but
+         * because of our schema in the DynamoDB table, it is 
+         * impossible to get items by just HikeLocation, as 
+         * the primary key in this schema is HikeLocation + HikeName
+         * This presents a problem, because we are trying to find the
+         *  hike name, so how can we use it in a search for hikes? 
+         */
+        /*
+        const batchGetParams = {
+            RequestItems: {
+                "traildb": {
+                    Keys: [
+                        { HikeLocation : location}
+                    ]
+                }
+            }
+        }
+        
+        testBatchGet(batchGetParams, res => {
+            console.log("BatchGetTest finished: ", res);
         });
+        */
+        
+        /* TODO: replace ZIP codes with city names */
+        
         
         // Read the items from the table that match 
         // the given Location, difficulty, and length
@@ -193,20 +227,26 @@ const handlers = {
                 location = _rp + '<break time=".15s"/>';
             
             // Build the phrase for the voice emission by Alexa
-            phrase = phrase + count + ' ' + hikeCountPhrase + 
-            ' near ' + location;
+            if (count > 5) {
+                phrase = phrase + "more than 5 " + hikeCountPhrase;
+            } else {
+                phrase = phrase + count + ' ' + hikeCountPhrase;
+            }
+                
+                phrase = phrase + ' near ' + location;
             
             // Decide whether to ask to look for more hikes (if none found)
             // Or dive into the list returned from the call to the DB
             if (count === 0) {
+                console.log("No hikes found after DynamoDB queried");
                 phrase = 'Sorry, I found no hikes near ' + location
                         + '... Try giving us a zip code or nearby city instead.'
                 this.attributes.noHikes = true;
+                this.emit(':ask', phrase);
             } else {
-                
+                console.log("At least one hike found for " + location);
                 // Setup info for the first card to be sent
                 hikeName = hikes[0].HikeName;
-                directions = hikes[0].DirectionLink;
                 
                 phrase = phrase + '. The first is ' +
                 hikeName + ', ' +
@@ -219,25 +259,23 @@ const handlers = {
             // Essentially means we have found hikes, and may or may
             // not be traversing a list of returned results
             this.attributes.state = states['surfing'];
+            console.log("Just assigned this.attributes.state = " + states['surfing']);
             this.attributes.looping = true;
+            console.log("Just assigned this.attributes.looping = true");
             
             // Store the returned hikes from DynamoDB into a session varibale,
             // along with the index of the first hike found, 
             // and the overall number of hikes found
             this.attributes.hikes = hikes;
+            console.log("Just assigned this.attributes.hikes = " + hikes);
             this.attributes.hikenum = 0;
+            console.log("Just assigned this.attributes.hikenum = 0");
             this.attributes.hikecount = count;
+            console.log("Just assigned this.attributes.hikecount = " + count);
             
-            //this.emit(':askWithCard', speechOutput, repromptSpeech, cardTitle, cardContent, imageObj);
-            // Emit response to user
-            /*this.emit(
-                ':askWithCard', 
-                phrase,
-                phrase, 
-                hikeName, 
-                directions
-            );*/
-            
+            console.log("Emitting first found hike in the list of hikes");
+            console.log("Attempting to emit: " + phrase);
+               
             this.emit(':ask', phrase);
         });
         
@@ -248,6 +286,7 @@ const handlers = {
         
         
         var response = '';
+        var cardDesc = '';
         var state = this.attributes.state;
         var looping = this.attributes.looping;
         var noHikes = this.attributes.noHikes;
@@ -276,6 +315,13 @@ const handlers = {
             
             var properArticle = findProperArticle(curHike.TrailType);
             
+            cardDesc = cardDesc 
+            + curHike.Length + ' miles, '
+            + difficultyWord[curHike.SkillLevel - 1] + ', \n'
+            + curHike.TrailType + ', '
+            + durationToEnglish(curHike.Duration) + ', '
+            + curHike.DirectionLink;
+            
             response = response + curHike.HikeName + 
             ' is considered ' + difficulty[curHike.SkillLevel - 1] + ' by others, '
             + ' and is ' + properArticle + ' ' + curHike.TrailType + ' ' + _hike + ' .'
@@ -286,17 +332,17 @@ const handlers = {
             // If there is no next hike, prompt the user for more hikes.
             if (hikenum + 1 >= hikecount) {
                 response = response + ' '
-                + 'and is the last ' + _hike + ' in that area. Feel free to start over or quit.';
+                + 'and is the last ' + _hike + ' in that area. I sent a card to you with all this info. Feel free to start over or quit.';
                 this.attributes.state = states.end;
-                this.emit(':ask', response);
+                this.emit(':askWithCard', response, response, curHike.HikeName, cardDesc);
             
             // Start looping through the hikes
             } else {
                 this.attributes.hikenum = this.attributes.hikenum + 1;
-                response = response + ' <break time=".15s"/> Should I move to the next ' + _hike + ', ?';
+                response = response + ' <break time=".15s"/>. I sent a card to you with all this info. Should I move to the next ' + _hike + ', ?';
             }
 
-            this.emit(':ask', response);
+            this.emit(':askWithCard', response, response, curHike.HikeName, cardDesc);
         
         // If the user has already searched for hikes,
         // and they HAVE begun traversing the paginated hikes
@@ -410,7 +456,11 @@ const handlers = {
             if (hikenum >= hikecount) {
                 this.emit(':ask', 'Okay, I\'m out of ' + _hikes + ', look for more?');
             }
-                
+            
+            if ((hikenum + 1) % 5 == 0) {
+                response += "There are " + (hikecount - hikenum - 1) + " " + _hikes + " remaining."
+            }
+            
             curHike = hikes[hikenum];
             
             response = response + '... The next hike is ' +
@@ -522,6 +572,28 @@ function readDynamoItem(params, callback) {
 
 }
 
+function testBatchGet(params, callback) {
+    
+    var AWS = require('aws-sdk');
+    AWS.config.update({region: AWSregion});
+    
+    var docClient = new AWS.DynamoDB.DocumentClient();
+    
+    console.log("testing batchGet()");
+    
+    docClient.batchGet(params, (err, data) => {
+        console.log("inside of batchGet()");
+        if (err)
+            console.error("batchGet() failed: ", JSON.stringify(err, null, 2));
+        else
+            console.log("batchGet() succeeded: ", JSON.stringify(data, null, 2));
+        
+        callback(data);
+    
+    });
+    
+}
+
 function findProperArticle(hikeType) {
     var firstChar = hikeType.substring(0,1).toLowerCase();
     var article = 'a';
@@ -534,7 +606,7 @@ function durationToEnglish(duration) {
     var phrase = '';
     var hours = Math.ceil(duration);
     var days = hours / 24;
-    if (Math.round(days) > 0) {
+    if (Math.floor(days) > 0) {
         phrase += days;
         if (days == 1)
             phrase += ' day ';
@@ -555,35 +627,5 @@ function durationToEnglish(duration) {
         phrase += ' hours ';
     
     return phrase;
-    
-}
-
-function zipToCity(zip, callback) {
-    
-    console.log()
-    
-    // Dependency for any HTTPS requests that may come up
-    var https = require('https');
-    
-    var apikey = "MyQgHA31pDcUnkLyLPwZX4Vx34ZWJ8QaUahM9MyifovoBt3ANRw65EQjv7YoTwo1";
-    var city;
-    var url = "https://www.zipcodeapi.com/rest/" + apikey + "/info.json/" + zip + "/radians";
-    
-    console.log("Calling https.get() on " + url);
-    
-    https.get(url, (res) => {
-        let data = '';
-        console.log(res);
-        console.log("ZipcodeAPI Status: " + res.statusCode);
-        res.on('data', (d) => {
-            data += d;
-            console.log(data);
-        });
-        res.on('end', (resp) => {
-            callback(data);
-        });
-    }).on('error', (e) => {
-        console.error(e);
-    });
     
 }
