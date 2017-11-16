@@ -1,9 +1,11 @@
 /*
- * TrailSurf intent JS backbone
+ * Trail Surfer JS Backbone
+ * 
+ * Author: Ezio Ballarin
  */
 'use strict';
 
-// Strings
+// Dependencies to route our skill properly
 const AWSregion = "us-east-1";
 const dbTable = "traildb";
 const APP_ID = "amzn1.ask.skill.3e6b03ac-4a46-468b-a6fe-99b3c6c52d65";
@@ -17,10 +19,10 @@ const _hiking = '<phoneme alphabet="ipa" ph="ˈhaɪkɪŋ"> hiking</phoneme>';
 // to a word for the difficulty of a trail.
 const difficulty = [
     'easy', 
-    'moderate', 
-    'medium', 
-    'medium hard', 
-    'hard'
+    'a bit challenging', 
+    'somewhat difficult', 
+    'difficult', 
+    'very difficult'
 ];
 
 const languageStrings = {
@@ -31,7 +33,7 @@ const languageStrings = {
         WELCOME_MESSAGE: 
         "Welcome to %s. "
         + "You can ask for something like, find me a " + _hike + "."
-        + "... Now, what can I help you with?",
+        + "<break time='0.15s'/> Now, what can I help you with?",
 
         WELCOME_REPROMPT:
         'For instructions on what you can say, please say help me.',
@@ -83,8 +85,10 @@ const handlers = {
     
     'LaunchRequest': function () {
         
-        this.attributes.state = states.started;
+        // Give our skill's variables a clean slate
+        this.attributes.state = null;
         this.attributes.looping = false;
+        this.attributes.noHikes = true;
         
         this.attributes.speechOutput = this.t('WELCOME_MESSAGE', this.t('SKILL_NAME'));
         
@@ -92,6 +96,7 @@ const handlers = {
         // the welcome message or says something that is not
         // understood, they will be prompted again with this text.
         this.attributes.repromptSpeech = this.t('WELCOME_REPROMPT');
+        
         this.emit(
             ':ask', 
             this.attributes.speechOutput,
@@ -107,8 +112,7 @@ const handlers = {
         console.log("State: " + this.attributes.state);
         console.log("Looping: " + this.attributes.looping);
         
-        // Set default variables to be changed if slots are
-        // specified
+        // Set default variables to be changed if slots are specified
         var location = "rohnert park";
         var distance = 5;
         var length = 2;
@@ -140,6 +144,7 @@ const handlers = {
             difficulty = slots.difficulty.value;
         }
         
+        // Setup parameters for our query to DynamoDB
         const dynamoParams = {
             TableName: dbTable,
             KeyConditionExpression: 'HikeLocation = :loc',
@@ -155,6 +160,8 @@ const handlers = {
             
             // Initialize the phrase that will be emitted
             var phrase = 'I found ';
+            var hikeName = '';
+            var directions = 'No hikes.';
             
             // Store the number of hikes returned
             var count = myResult.Count;
@@ -178,12 +185,18 @@ const handlers = {
             
             // Decide whether to ask to look for more hikes (if none found)
             // Or dive into the list returned from the call to the DB
-            if (count === 0)
-                phrase = phrase + '... Should I look for more?';
-            else {
+            if (count === 0) {
+                phrase = 'Sorry, I found no hikes near ' + location
+                        + '... Should I look for more?'
+                this.attributes.noHikes = true;
+            } else {
+                
+                // Setup info for the first card to be sent
+                hikeName = hikes[0].HikeName;
+                directions = hikes[0].DirectionLink;
                 
                 phrase = phrase + '... The first is ' +
-                hikes[0].HikeName + '... ' +
+                hikeName + '... ' +
                 'It is ' + hikes[0].TrailLength + ' miles long... ' +
                 'Would you like to know more about it?';
                 
@@ -202,11 +215,17 @@ const handlers = {
             this.attributes.hikenum = 0;
             this.attributes.hikecount = count;
             
+            //this.emit(':askWithCard', speechOutput, repromptSpeech, cardTitle, cardContent, imageObj);
             // Emit response to user
             this.emit(
-                ':ask', 
-                phrase
+                ':askWithCard', 
+                phrase,
+                phrase, 
+                hikeName, 
+                directions
             );
+            
+            //this.emit(':ask', phrase);
         });
         
     },
@@ -218,6 +237,7 @@ const handlers = {
         var response = '';
         var state = this.attributes.state;
         var looping = this.attributes.looping;
+        var noHikes = this.attributes.noHikes;
         var hikes, hikenum, hikecount, curHike;
         
         if (state == states.end)
@@ -244,8 +264,9 @@ const handlers = {
             var properArticle = findProperArticle(curHike.TrailType);
             
             response = response + curHike.HikeName + 
-            ' is ' + difficulty[curHike.SkillLevel - 1] + ' difficulty '
-            + '... and is ' + properArticle + ' ' + curHike.TrailType + ' ' + _hike + ' ... ';
+            ' is considered ' + difficulty[curHike.SkillLevel - 1] + ' by others, '
+            + ' and is ' + properArticle + ' ' + curHike.TrailType + ' ' + _hike + ' .'
+            + 'It typically takes others ' + durationToEnglish(curHike.Duration) + ' to complete.';
             
             this.attributes.looping = false;
             
@@ -259,7 +280,7 @@ const handlers = {
             // Start looping through the hikes
             } else {
                 this.attributes.hikenum = this.attributes.hikenum + 1;
-                response = response + ' Should I move to the next ' + _hike + ', ?';
+                response = response + ' <break time=".15s"/> Should I move to the next ' + _hike + ', ?';
             }
 
             this.emit(':ask', response);
@@ -479,12 +500,11 @@ function readDynamoItem(params, callback) {
     docClient.query(params, (err, data) => {
         if (err) {
             console.error("Unable to read item. Error JSON:", JSON.stringify(err, null, 2));
+            
         } else {
             console.log("GetItem succeeded:", JSON.stringify(data, null, 2));
-
-            callback(data);  // this particular row has an attribute called message
-
         }
+        callback(data);
     });
 
 }
@@ -495,4 +515,32 @@ function findProperArticle(hikeType) {
     if (firstChar == 'o')
         article = 'an';
     return article;
+}
+
+function durationToEnglish(duration) {
+    var phrase = '';
+    var hours = Math.ceil(duration);
+    var days = hours / 24;
+    if (Math.round(days) > 0) {
+        phrase += days;
+        if (days == 1)
+            phrase += ' day ';
+        else 
+            phrase += ' days ';
+    }
+    
+    if (Math.floor(days) % 24 !== 0) {
+        phrase += ' and ';
+        hours = hours % 24;
+    }
+    
+    phrase += hours;
+    
+    if (hours == 1)
+        phrase += ' hour ';
+    else
+        phrase += ' hours ';
+    
+    return phrase;
+    
 }
