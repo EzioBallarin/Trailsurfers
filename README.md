@@ -1,3 +1,13 @@
 # TrailSurfers 
 
-If you are contributing, please create a new branch for your own code.
+Amazon Alexa health and fitness skill designed to find hikes in California.
+
+Designed and developed by students at Sonoma State University in Rohnert Park, CA.
+
+Contributors:
+* Ezio Ballarin
+* Lindsey Tally
+* Timothy Gallagher
+* Kevin Gersjes
+* Evan LeValley
+* Max Sedor
